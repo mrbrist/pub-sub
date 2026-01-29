@@ -36,6 +36,13 @@ func main() {
 
 	pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect, fmt.Sprintf("pause.%s", username), routing.PauseKey, pubsub.SimpleQueueTransient, handlerPause(state))
 
+	pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username), "army_moves.*", pubsub.SimpleQueueTransient, handlerMove(state))
+
+	ch, err := connection.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		input := gamelogic.GetInput()
 		if input == nil {
@@ -50,12 +57,17 @@ func main() {
 			}
 			fmt.Println("Spawn successful!")
 		case "move":
-			_, err := state.CommandMove(input)
+			am, err := state.CommandMove(input)
 			if err != nil {
 				fmt.Println("Could not move")
 				continue
 			}
-			fmt.Println("Move successful!")
+			pubsub.PublishJSON(ch, routing.ExchangePerilTopic, fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username), gamelogic.ArmyMove{
+				Player:     am.Player,
+				Units:      am.Units,
+				ToLocation: am.ToLocation,
+			})
+			fmt.Println("Move published!")
 		case "status":
 			state.CommandStatus()
 		case "help":
@@ -76,5 +88,13 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
 		defer fmt.Print("> ")
 
 		gs.HandlePause(ps)
+	}
+}
+
+func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(am gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+
+		gs.HandleMove(am)
 	}
 }
