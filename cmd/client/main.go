@@ -6,6 +6,7 @@ import (
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -26,12 +27,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(connection, "peril_direct", fmt.Sprintf("pause.%s", username), "pause", pubsub.SimpleQueueTransient)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// _, _, err = pubsub.DeclareAndBind(connection, "peril_direct", fmt.Sprintf("pause.%s", username), "pause", pubsub.SimpleQueueTransient)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	state := gamelogic.NewGameState(username)
+
+	pubsub.SubscribeJSON(connection, routing.ExchangePerilDirect, fmt.Sprintf("pause.%s", username), routing.PauseKey, pubsub.SimpleQueueTransient, handlerPause(state))
 
 	for {
 		input := gamelogic.GetInput()
@@ -65,5 +68,13 @@ func main() {
 		default:
 			fmt.Println("Unknown command...")
 		}
+	}
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+
+		gs.HandlePause(ps)
 	}
 }

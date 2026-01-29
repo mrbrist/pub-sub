@@ -29,6 +29,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	_, _, err = pubsub.DeclareAndBind(connection, "peril_topic", "game_logs", "game_logs.*", pubsub.SimpleQueueDurable)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for {
 		input := gamelogic.GetInput()
 		if input == nil {
