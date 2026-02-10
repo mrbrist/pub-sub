@@ -51,10 +51,8 @@ func SubscribeJSON[T any](
 				fmt.Println("NackDiscard")
 				d.Nack(true, false)
 			default:
-				fmt.Println("Unknoqn AckType")
+				fmt.Println("Unknown AckType")
 			}
-
-			_ = d.Ack(false)
 		}
 	}()
 

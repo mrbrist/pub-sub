@@ -10,6 +10,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+var globalCh *amqp.Channel
+
 func main() {
 	fmt.Println("Starting Peril client...")
 
@@ -38,10 +40,14 @@ func main() {
 
 	pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username), "army_moves.*", pubsub.SimpleQueueTransient, handlerMove(state))
 
+	pubsub.SubscribeJSON(connection, routing.ExchangePerilTopic, "war", "war.*", pubsub.SimpleQueueDurable, handlerWar(state))
+
 	ch, err := connection.Channel()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	globalCh = ch
 
 	for {
 		input := gamelogic.GetInput()
@@ -101,6 +107,13 @@ func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.AckTyp
 		case gamelogic.MoveOutComeSafe:
 			return pubsub.Ack
 		case gamelogic.MoveOutcomeMakeWar:
+			err := pubsub.PublishJSON(globalCh, routing.ExchangePerilTopic, fmt.Sprintf("%s.%s", routing.WarRecognitionsPrefix, gs.GetUsername()), gamelogic.RecognitionOfWar{
+				Attacker: am.Player,
+				Defender: gs.GetPlayerSnap(),
+			})
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		case gamelogic.MoveOutcomeSamePlayer:
 			return pubsub.NackDiscard
@@ -108,5 +121,29 @@ func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.AckTyp
 			return pubsub.NackDiscard
 		}
 
+	}
+}
+
+func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.AckType {
+	return func(rw gamelogic.RecognitionOfWar) pubsub.AckType {
+		defer fmt.Print("> ")
+
+		out, _, _ := gs.HandleWar(rw)
+
+		switch out {
+		case gamelogic.WarOutcomeNotInvolved:
+			return pubsub.NackRequeue
+		case gamelogic.WarOutcomeNoUnits:
+			return pubsub.NackDiscard
+		case gamelogic.WarOutcomeOpponentWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeYouWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeDraw:
+			return pubsub.Ack
+		default:
+			fmt.Println("Unknown war outcome")
+			return pubsub.NackDiscard
+		}
 	}
 }
