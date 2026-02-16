@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -89,6 +90,14 @@ func main() {
 	}
 }
 
+func PublishGamelog(gl routing.GameLog) error {
+	err := pubsub.PublishGob(globalCh, routing.ExchangePerilTopic, fmt.Sprintf("%s.%s", routing.GameLogSlug, gl.Username), gl)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.AckType {
 	return func(ps routing.PlayingState) pubsub.AckType {
 		defer fmt.Print("> ")
@@ -128,7 +137,7 @@ func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub
 	return func(rw gamelogic.RecognitionOfWar) pubsub.AckType {
 		defer fmt.Print("> ")
 
-		out, _, _ := gs.HandleWar(rw)
+		out, winner, loser := gs.HandleWar(rw)
 
 		switch out {
 		case gamelogic.WarOutcomeNotInvolved:
@@ -136,10 +145,34 @@ func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub
 		case gamelogic.WarOutcomeNoUnits:
 			return pubsub.NackDiscard
 		case gamelogic.WarOutcomeOpponentWon:
+			err := PublishGamelog(routing.GameLog{
+				CurrentTime: time.Now(),
+				Message:     fmt.Sprintf("%s won a war against %s", winner, loser),
+				Username:    gs.GetUsername(),
+			})
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		case gamelogic.WarOutcomeYouWon:
+			err := PublishGamelog(routing.GameLog{
+				CurrentTime: time.Now(),
+				Message:     fmt.Sprintf("%s won a war against %s", winner, loser),
+				Username:    gs.GetUsername(),
+			})
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		case gamelogic.WarOutcomeDraw:
+			err := PublishGamelog(routing.GameLog{
+				CurrentTime: time.Now(),
+				Message:     fmt.Sprintf("A war between %s and %s resulted in a draw", winner, loser),
+				Username:    gs.GetUsername(),
+			})
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		default:
 			fmt.Println("Unknown war outcome")
