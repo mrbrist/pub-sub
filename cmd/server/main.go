@@ -29,7 +29,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(connection, "peril_topic", "game_logs", "game_logs.*", pubsub.SimpleQueueDurable)
+	err = pubsub.SubscribeGob(connection, "peril_topic", "game_logs", "game_logs.*", pubsub.SimpleQueueDurable, handlerLogs())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -58,5 +58,15 @@ func main() {
 		default:
 			fmt.Println("Unknown command...")
 		}
+	}
+}
+
+func handlerLogs() func(routing.GameLog) pubsub.AckType {
+	return func(gl routing.GameLog) pubsub.AckType {
+		defer fmt.Print("> ")
+
+		gamelogic.WriteLog(gl)
+
+		return pubsub.Ack
 	}
 }
